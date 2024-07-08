@@ -1,5 +1,42 @@
 import { LOAN_OPTIONS, CONVERSATION_START } from './chatbotData';
 import { getNextMessageId } from './messageCounter';
+// import TransactionTable from '@/components/chat/Table';
+
+
+function generateTableHtml(data) {
+  if (!data || !Array.isArray(data)) return '';
+
+  // Extracting headers from the first object assuming all objects have the same structure
+  const headers = Object.keys(data[0]);
+
+  let htmlContent = `<table class="border-collapse border border-gray-200">
+                      <thead>
+                        <tr class="bg-gray-100">`;
+
+  // Generating table headers
+  headers.forEach(header => {
+    htmlContent += `<th class="border border-gray-300 p-2">${header}</th>`;
+  });
+
+  htmlContent += `</tr>
+                </thead>
+                <tbody>`;
+
+  // Generating table rows
+  data.forEach(item => {
+    htmlContent += `<tr class="bg-white">`;
+    headers.forEach(header => {
+      htmlContent += `<td class="border border-gray-300 p-2">${item[header]}</td>`;
+    });
+    htmlContent += `</tr>`;
+  });
+
+  htmlContent += `</tbody>
+                  </table>`;
+
+  return htmlContent;
+}
+
 
 export const createNewAssistantMessage = (content, options = null, reference = null) => {
   const newMessage = {
@@ -78,14 +115,35 @@ export const getAIBotResponse = async (message) => {
 
     const data = await response.json();
     console.log('API response:', data);
-    if (data.highlight){
-      return { content: data.highlight };
-    }
-    if (data.answer){
-      return { content: data.answer };
-    }
-    if (data.message){
-      return { content: data.message };
+    // if (data.highlight){
+    //   return { content: data.highlight };
+    // }
+    // if (data.answer){
+    //   return { content: data.answer };
+    // }
+    // if (data.message){
+    //   return { content: data.message };
+    // }
+    if (data.message && data.message.includes('Missing required parameters')) {
+      // Handle missing parameters case
+      return { content: 'Please provide the required parameters.', required_params: data.required_params };
+    } 
+    else {
+      // Handle regular response case
+      if (data.highlight) {
+        return { content: data.highlight };
+      }
+      if (data.answer) {
+        return { content: data.answer };
+      }
+      // check if data.message is array
+
+      if (data.message && Array.isArray(data.message)) {
+        return { content: generateTableHtml(data.message) };
+      }
+      if (data.message) {
+        return { content: data.message };
+      }
     }
 
   } catch (error) {

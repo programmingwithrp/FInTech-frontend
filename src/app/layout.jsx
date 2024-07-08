@@ -7,8 +7,8 @@ import { ChatProvider } from '../provider';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata = {
-  title: 'ChatBot',
-  description: 'Web chatbot',
+  title: 'FinMate',
+  description: 'Web FinMate',
 };
 
 export default function RootLayout({ children }) {

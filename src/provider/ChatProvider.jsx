@@ -1,5 +1,4 @@
 'use client';
-
 import React, { useState, useMemo } from 'react';
 import PropTypes from 'prop-types';
 import {
@@ -8,7 +7,6 @@ import {
   createNewAssistantMessage,
   createNewUserMessage,
   firstMessage,
-  responseConditions,
   resetMessageIdCounter,
   getAIBotResponse,
 } from '@/utils';
@@ -20,6 +18,10 @@ export default function ChatProvider({ children }) {
   const [user, setUser] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [isFinishedConversation, setIsFinishedConversation] = useState(false);
+  const [requiredParams, setRequiredParams] = useState([]);
+  const [currentParamIndex, setCurrentParamIndex] = useState(0);
+  const [pendingParams, setPendingParams] = useState([]);
+  const [currentQuery, setCurrentQuery] = useState('');
 
   const handleAssistantResponse = (response) => {
     setMessages((prevMessages) => [
@@ -43,20 +45,33 @@ export default function ChatProvider({ children }) {
   const getBotResponse = async (message) => {
     console.log('User message:', message);
     setIsTyping(true);
-  
+
     setTimeout(async () => {
       const lastMessage = messages[messages.length - 1].content;
-  
+
       if (lastMessage.includes('username')) {
         setUser(message);
       }
-  
+
       try {
         const aiResponse = await getAIBotResponse(message);
-  
+
         if (aiResponse) {
           console.log('AI response:', aiResponse);
           handleAssistantResponse(aiResponse);
+
+          // Handle missing parameters case
+          if (aiResponse.content === 'Please provide the required parameters.') {
+            console.log('Missing required parameters:', aiResponse.required_params);
+            setRequiredParams(aiResponse.required_params);
+            setCurrentParamIndex(0);
+            setPendingParams([]);
+            setCurrentQuery(message);
+            // Ask for the first parameter immediately
+            if (aiResponse.required_params.length > 0) {
+              askNextParameter(aiResponse.required_params[0]);
+            }
+          }
         } else {
           handleFallbackAssistantResponse();
         }
@@ -64,11 +79,104 @@ export default function ChatProvider({ children }) {
         console.error('Error fetching AI response:', error);
         handleFallbackAssistantResponse();
       }
-  
+
       setIsTyping(false);
     }, 1000);
   };
+
+  const askNextParameter = (param) => {
+    setMessages((prevMessages) => [...prevMessages, createNewAssistantMessage(`Please provide ${param}:`)]);
+  };
+
+  const collectUserResponse = (response) => {
+    console.log('User response:', response);
+    console.log('Current param index:', currentParamIndex);
+    if (currentParamIndex > requiredParams.length - 1) {
+      var lastMessage = messages[messages.length - 1].content;
+      console.log(lastMessage);
+      if (lastMessage !== response.content){
+        setMessages((prevMessages) => [...prevMessages, createNewUserMessage(response)]);
+      }
+    }
+    
+    setPendingParams((prevPendingParams) => {
+      const updatedParams = [...prevPendingParams, response];
+      const nextIndex = currentParamIndex + 1;
+      
+      if (nextIndex < requiredParams.length) {
+        setCurrentParamIndex(nextIndex);
+        askNextParameter(requiredParams[nextIndex]);
+      } else {
+        // All parameters collected, make API call
+        const payload = updatedParams.reduce((acc, param, idx) => ({ ...acc, [requiredParams[idx]]: param }), {});
+        console.log('payload', payload);
+        var newPayload = convertPayload(payload);
+        makeApiCall(newPayload);
+      }
+      
+      return updatedParams;
+    });
+    
+  };
+
+  function convertPayload(payload) {
+    const convertedPayload = {};
   
+    for (const key in payload) {
+      if (payload.hasOwnProperty(key)) {
+        const value = payload[key];
+        // Check if the value is a string and can be converted to an integer
+        if (typeof value === 'string' && !isNaN(value) && Number.isInteger(parseFloat(value))) {
+          convertedPayload[key] = parseInt(value, 10);
+        } else {
+          convertedPayload[key] = value;
+        }
+      }
+    }
+  
+    return convertedPayload;
+  }
+
+  
+
+  const makeApiCall = async (payload) => {
+    // Add query to payload
+    payload.query = currentQuery;
+
+    try {
+      const response = await fetch('http://localhost:5002/query', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+
+      const data = await response.json();
+      console.log('API response:', data);
+      if (data.status === true) {
+        handleAssistantResponse({ content: data.message });
+      }
+      else{
+        handleAssistantResponse({ content: data.message });
+      }
+
+      // Reset states to revert to normal bot behavior
+      setRequiredParams([]);
+      setCurrentParamIndex(0);
+      setPendingParams([]);
+      setCurrentQuery('');
+
+    } catch (error) {
+      console.error('API error:', error);
+      handleFallbackAssistantResponse();
+    }
+  };
+
   const finishConversation = () => {
     setIsFinishedConversation(true);
     setMessages((prevMessages) => [...prevMessages, createNewAssistantMessage('Bye! 👋')]);
@@ -95,7 +203,11 @@ export default function ChatProvider({ children }) {
     if (message === CONVERSATION_END) {
       finishConversation();
     } else {
-      getBotResponse(message);
+      if (requiredParams.length > 0 && currentParamIndex < requiredParams.length) {
+        collectUserResponse(message);
+      } else {
+        getBotResponse(message);
+      }
     }
   };
 

@@ -60,10 +60,10 @@ export default function Chat() {
 
   return (
     <section className="self-center">
-      <Card className="w-[440px]">
+      <Card className="w-[740px]">
         <CardHeader>
-          <CardTitle>Chatbot</CardTitle>
-          <CardDescription>Introduce yourself, ask questions and learn</CardDescription>
+          <CardTitle>FinMate</CardTitle>
+          <CardDescription>AI assistant to save your time</CardDescription>
         </CardHeader>
         <CardContent>
           <ScrollArea className="h-[600px] w-full pr-4 mt-2">
